@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predicción de Formas (Red A vs. Red B)</title>
+    <!-- 1. Cargar Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Cargar TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <style>
+        /* Estilos para el cursor de dibujo */
+        canvas {
+            cursor: crosshair;
+        }
+        /* Color de fondo para que el canvas negro resalte */
+        #canvas-container {
+            background-color: #f0f0f0; /* Un fondo gris claro */
+            padding: 8px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen font-sans p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-cyan-400">Comparador de Modelos (A vs. B)</h1>
+            <p class="text-lg text-gray-300">Dibuja una forma y compara las predicciones de ambos modelos en tiempo real.</p>
+            <div id="status" class="mt-4 text-lg text-yellow-500">Cargando modelos... (puede tardar un momento)</div>
+        </header>
+
+        <!-- Contenedor principal: Canvas y Resultados -->
+        <div class="flex flex-col md:flex-row gap-8">
+
+            <!-- Columna de Dibujo -->
+            <div class="w-full md:w-1/2 p-6 bg-gray-800 rounded-2xl shadow-xl border border-gray-700">
+                <h2 class="text-3xl font-bold text-center mb-4">Dibuja tu Forma (28x28)</h2>
+                
+                <!-- El lienzo es de 280x280 (10x el tamaño de la imagen de entrada 28x28) -->
+                <div id="canvas-container" class="flex justify-center">
+                    <canvas id="canvas" width="280" height="280" class="bg-black rounded-lg shadow-inner"></canvas>
+                </div>
+                
+                <div class="flex gap-4 mt-6">
+                    <button id="predictBtn" class="flex-1 px-4 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg shadow-md transition-all duration-200 disabled:bg-gray-500" disabled>
+                        Predecir
+                    </button>
+                    <button id="clearBtn" class="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition-all duration-200">
+                        Borrar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Columna de Resultados (para ambos modelos) -->
+            <div class="w-full md:w-1/2 p-6 bg-gray-800 rounded-2xl shadow-xl border border-gray-700">
+                <h2 class="text-3xl font-bold text-center mb-6">Resultados de Predicción</h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    <!-- Resultados Red B -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-blue-400">Red B (Desde Cero)</h3>
+                        <p class="text-5xl font-black text-center my-4" id="pred-text-b">?</p>
+                        <div id="chart-container-b" class="space-y-2">
+                            <!-- El gráfico de barras se generará aquí -->
+                        </div>
+                    </div>
+
+                    <!-- Resultados Red A -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-red-400">Red A (Transfer MNIST)</h3>
+                        <p class="text-5xl font-black text-center my-4" id="pred-text-a">?</p>
+                        <div id="chart-container-a" class="space-y-2">
+                            <!-- El gráfico de barras se generará aquí -->
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div> <!-- Fin del contenedor principal -->
+    </div> <!-- Fin del max-w-6xl -->
+
+    <script>
+        // --- 0. Configuración ---
+        // ¡IMPORTANTE! Estas clases deben estar en el orden correcto (0-7)
+        // Sacado de tus logs: ['circulo', 'cuadrado', 'equis', 'estrella', 'rectangulo', 'rombo', 'semicirculo', 'triangulo']
+        const CLASS_NAMES = [
+            'circulo', 'cuadrado', 'equis', 'estrella', 
+            'rectangulo', 'rombo', 'semicirculo', 'triangulo'
+        ];
+        
+        // --- 1. Variables Globales ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let model_A, model_B; // Aquí guardaremos los modelos
+
+        const predictBtn = document.getElementById('predictBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const statusBar = document.getElementById('status');
+        
+        // --- 2. Lógica del Canvas ---
+        function initializeCanvas() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 20; // Pincel grueso, similar a MNIST
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Eventos de Mouse
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseout', stopDrawing);
+
+            // Eventos Táctiles
+            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e.touches[0]); });
+            canvas.addEventListener('touchend', (e) => { e.preventDefault(); stopDrawing(); });
+            canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); });
+        }
+
+        function getEventCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const { x, y } = getEventCoords(e);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            ctx.beginPath();
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const { x, y } = getEventCoords(e);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Limpiar también las predicciones
+            updatePredictionUI('a', null);
+            updatePredictionUI('b', null);
+        }
+        clearBtn.addEventListener('click', clearCanvas);
+        predictBtn.addEventListener('click', predict);
+
+        // --- 3. Lógica de TensorFlow.js ---
+
+        // Cargar ambos modelos en paralelo
+        async function loadModels() {
+            try {
+                // Rutas a las carpetas que exportaste
+                const model_b_path = 'model_b_desde_cero/model.json';
+                const model_a_path = 'model_a_transfer/model.json';
+
+                // Cargamos ambos al mismo tiempo
+                [model_B, model_A] = await Promise.all([
+                    tf.loadLayersModel(model_b_path),
+                    tf.loadLayersModel(model_a_path)
+                ]);
+
+                console.log("Modelo B (Desde Cero) cargado.", model_B);
+                console.log("Modelo A (Transfer MNIST) cargado.", model_A);
+                
+                statusBar.textContent = "¡Modelos cargados! Listo para predecir.";
+                statusBar.className = "mt-4 text-lg text-green-400";
+                predictBtn.disabled = false;
+
+            } catch (err) {
+                console.error("Error al cargar los modelos:", err);
+                statusBar.textContent = "Error: No se pudieron cargar los modelos.";
+                statusBar.className = "mt-4 text-lg text-red-500";
+            }
+        }
+
+        // Pre-procesar el canvas para que coincida con (1, 28, 28, 1)
+        function preprocessCanvas() {
+            // 1. Convertir a tensor (blanco y negro, 1 canal)
+            let tensor = tf.browser.fromPixels(canvas, 1);
+            
+            // 2. Redimensionar de 280x280 a 28x28
+            tensor = tf.image.resizeBilinear(tensor, [28, 28]);
+            
+            // 3. Normalizar (dividir por 255)
+            tensor = tensor.toFloat().div(tf.scalar(255.0));
+            
+            // 4. Añadir la dimensión del batch
+            tensor = tensor.expandDims(0); // Forma: [1, 28, 28, 1]
+            
+            return tensor;
+        }
+
+        // Realizar la predicción
+        async function predict() {
+            if (!model_A || !model_B) {
+                console.log("Modelos no cargados.");
+                return;
+            }
+
+            // 1. Obtener el tensor de la imagen
+            const tensor = preprocessCanvas();
+
+            // 2. Predecir con AMBOS modelos
+            // Usamos .data() para obtener los arrays de probabilidad
+            const output_B = await model_B.predict(tensor).data();
+            const output_A = await model_A.predict(tensor).data();
+            
+            // 3. Limpiar memoria del tensor
+            tensor.dispose();
+
+            // 4. Actualizar la UI
+            updatePredictionUI('b', output_B);
+            updatePredictionUI('a', output_A);
+        }
+
+        // --- 4. Lógica de UI (Gráficos) ---
+        function updatePredictionUI(modelId, probabilities) {
+            const textEl = document.getElementById(`pred-text-${modelId}`);
+            const chartEl = document.getElementById(`chart-container-${modelId}`);
+            
+            // Colores para las barras
+            const colorClass = modelId === 'b' ? 'bg-blue-500' : 'bg-red-500';
+
+            // Limpiar estado
+            chartEl.innerHTML = '';
+            if (!probabilities) {
+                textEl.innerText = '?';
+                return;
+            }
+
+            // Encontrar la predicción más alta
+            let maxProb = -1;
+            let maxIndex = -1;
+            for (let i = 0; i < probabilities.length; i++) {
+                if (probabilities[i] > maxProb) {
+                    maxProb = probabilities[i];
+                    maxIndex = i;
+                }
+            }
+            
+            // Actualizar el texto del ganador
+            textEl.innerText = CLASS_NAMES[maxIndex];
+
+            // Generar el gráfico de barras
+            probabilities.forEach((prob, index) => {
+                const percent = (prob * 100).toFixed(1);
+                const className = CLASS_NAMES[index];
+                
+                const barHtml = `
+                    <div class="w-full">
+                        <div class="flex justify-between text-sm font-medium text-gray-300 mb-0.5">
+                            <span>${className}</span>
+                            <span>${percent}%</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-4">
+                            <div class="${colorClass} h-4 rounded-full" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+                chartEl.innerHTML += barHtml;
+            });
+        }
+        
+        // --- 5. Inicializar la App ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCanvas();
+            loadModels();
+            updatePredictionUI('a', null); // Limpiar gráficos al inicio
+            updatePredictionUI('b', null);
+        });
+
+    </script>
+</body>
+</html>
