@@ -13,6 +13,7 @@
 <body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-4">
 
     <div class="w-full max-w-5xl">
+        <!-- Encabezado -->
         <header class="text-center mb-8 mt-4">
             <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-red-500">
                 Red B (Novato) vs. Red A (Experto)
@@ -22,6 +23,7 @@
 
         <div class="flex flex-col md:flex-row gap-8 justify-center items-start">
             
+            <!-- Área de Dibujo -->
             <div class="flex flex-col items-center bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700">
                 <h2 class="text-xl font-semibold mb-4 text-blue-200">Tu Dibujo</h2>
                 <div class="relative bg-white rounded-lg overflow-hidden border-4 border-slate-600">
@@ -29,7 +31,7 @@
                 </div>
                 
                 <div class="flex gap-2 w-full mt-4">
-                    <button onclick="predict()" class="flex-1 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-bold transition">
+                    <button onclick="predict()" id="btn-predict" class="flex-1 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-bold transition disabled:bg-slate-700" disabled>
                         PREDECIR
                     </button>
                     <button onclick="clearCanvas()" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg font-bold transition">
@@ -39,21 +41,26 @@
                 <p id="status" class="text-sm mt-2 text-yellow-500">Cargando modelos...</p>
             </div>
 
+            <!-- Resultados -->
             <div class="flex-1 w-full space-y-6">
                 
+                <!-- Tarjeta Red B -->
                 <div class="bg-slate-800 p-5 rounded-xl border-l-4 border-blue-500 shadow-lg">
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="text-xl font-bold text-blue-400">Red B (Desde Cero)</h3>
                         <span id="pred-b-label" class="text-2xl font-black">?</span>
                     </div>
+                    <!-- Barras de probabilidad -->
                     <div id="bars-b" class="space-y-1 text-xs"></div>
                 </div>
 
+                <!-- Tarjeta Red A -->
                 <div class="bg-slate-800 p-5 rounded-xl border-l-4 border-red-500 shadow-lg">
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="text-xl font-bold text-red-400">Red A (Transfer Learning)</h3>
                         <span id="pred-a-label" class="text-2xl font-black">?</span>
                     </div>
+                    <!-- Barras de probabilidad -->
                     <div id="bars-a" class="space-y-1 text-xs"></div>
                 </div>
 
@@ -63,13 +70,16 @@
 
     <script>
         // --- CONFIGURACIÓN ---
-        // TODO: COPIA AQUÍ TUS CLASES EXACTAMENTE COMO SALEN EN TU NOTEBOOK (orden alfabético usualmente)
+        // Estas son las clases de tu GitHub, en orden alfabético
         const CLASES = ['circulo', 'cuadrado', 'equis', 'estrella', 'rectangulo', 'rombo', 'semicirculo', 'triangulo'];
 
         let modelA, modelB;
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         let isDrawing = false;
+        
+        const statusEl = document.getElementById('status');
+        const predictBtn = document.getElementById('btn-predict');
 
         // Configurar Canvas (Negro con linea Blanca, igual a MNIST)
         ctx.fillStyle = "black";
@@ -86,8 +96,13 @@
             if (!isDrawing) return;
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX || e.touches[0].clientX) - rect.left;
-            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            // Asegurarse de que las coordenadas del evento táctil o del mouse existan
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            if (clientX === undefined || clientY === undefined) return;
+            
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
             ctx.lineTo(x, y);
             ctx.stroke();
         };
@@ -95,21 +110,35 @@
         canvas.addEventListener('mousedown', start);
         canvas.addEventListener('mouseup', end);
         canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('touchstart', start);
-        canvas.addEventListener('touchend', end);
-        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchstart', start, { passive: false });
+        canvas.addEventListener('touchend', end, { passive: false });
+        canvas.addEventListener('touchmove', draw, { passive: false });
 
         // Cargar Modelos
         async function loadModels() {
             try {
-                // Rutas relativas a las carpetas
-                modelB = await tf.loadLayersModel('./model_B_web/model.json');
-                modelA = await tf.loadLayersModel('./model_A_web/model.json');
-                document.getElementById('status').innerText = "Modelos listos ✅";
-                document.getElementById('status').className = "text-sm mt-2 text-green-400";
+                // --- ¡MODIFICACIÓN AQUÍ! ---
+                // Añadimos '?v=1.1' para forzar al navegador a descargar
+                // los archivos nuevos y no usar el caché.
+                const cacheBuster = `?v=${new Date().getTime()}`;
+                const modelB_path = `./model_B_web/model.json${cacheBuster}`;
+                const modelA_path = `./model_A_web/model.json${cacheBuster}`;
+
+                console.log(`Cargando modelo desde: ${modelB_path}`);
+                console.log(`Cargando modelo desde: ${modelA_path}`);
+
+                [modelB, modelA] = await Promise.all([
+                    tf.loadLayersModel(modelB_path),
+                    tf.loadLayersModel(modelA_path)
+                ]);
+                
+                statusEl.innerText = "Modelos listos ✅";
+                statusEl.className = "text-sm mt-2 text-green-400";
+                predictBtn.disabled = false;
             } catch (e) {
-                document.getElementById('status').innerText = "Error cargando modelos ❌";
-                console.error(e);
+                statusEl.innerText = "Error cargando modelos ❌";
+                statusEl.className = "text-sm mt-2 text-red-500";
+                console.error(e); // El error que me mostraste saldrá aquí
             }
         }
         loadModels();
