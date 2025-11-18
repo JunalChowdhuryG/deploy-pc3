@@ -3,287 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Predicción de Formas (Red A vs. Red B)</title>
-    <!-- 1. Cargar Tailwind CSS -->
+    <title>Desafío de IA: Red A vs Red B</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 2. Cargar TensorFlow.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <style>
-        /* Estilos para el cursor de dibujo */
-        canvas {
-            cursor: crosshair;
-        }
-        /* Color de fondo para que el canvas negro resalte */
-        #canvas-container {
-            background-color: #f0f0f0; /* Un fondo gris claro */
-            padding: 8px;
-            border-radius: 8px;
-        }
+        canvas { touch-action: none; cursor: crosshair; }
     </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen font-sans p-4 md:p-8">
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-4">
 
-    <div class="max-w-6xl mx-auto">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-cyan-400">Comparador de Modelos (A vs. B)</h1>
-            <p class="text-lg text-gray-300">Dibuja una forma y compara las predicciones de ambos modelos en tiempo real.</p>
-            <div id="status" class="mt-4 text-lg text-yellow-500">Cargando modelos... (puede tardar un momento)</div>
+    <div class="w-full max-w-5xl">
+        <header class="text-center mb-8 mt-4">
+            <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-red-500">
+                Red B (Novato) vs. Red A (Experto)
+            </h1>
+            <p class="text-slate-400 mt-2">Dibuja una forma y ve quién predice mejor.</p>
         </header>
 
-        <!-- Contenedor principal: Canvas y Resultados -->
-        <div class="flex flex-col md:flex-row gap-8">
-
-            <!-- Columna de Dibujo -->
-            <div class="w-full md:w-1/2 p-6 bg-gray-800 rounded-2xl shadow-xl border border-gray-700">
-                <h2 class="text-3xl font-bold text-center mb-4">Dibuja tu Forma (28x28)</h2>
-                
-                <!-- El lienzo es de 280x280 (10x el tamaño de la imagen de entrada 28x28) -->
-                <div id="canvas-container" class="flex justify-center">
-                    <canvas id="canvas" width="280" height="280" class="bg-black rounded-lg shadow-inner"></canvas>
+        <div class="flex flex-col md:flex-row gap-8 justify-center items-start">
+            
+            <div class="flex flex-col items-center bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700">
+                <h2 class="text-xl font-semibold mb-4 text-blue-200">Tu Dibujo</h2>
+                <div class="relative bg-white rounded-lg overflow-hidden border-4 border-slate-600">
+                    <canvas id="canvas" width="280" height="280" class="bg-black"></canvas>
                 </div>
                 
-                <div class="flex gap-4 mt-6">
-                    <button id="predictBtn" class="flex-1 px-4 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold rounded-lg shadow-md transition-all duration-200 disabled:bg-gray-500" disabled>
-                        Predecir
+                <div class="flex gap-2 w-full mt-4">
+                    <button onclick="predict()" class="flex-1 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-bold transition">
+                        PREDECIR
                     </button>
-                    <button id="clearBtn" class="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition-all duration-200">
-                        Borrar
+                    <button onclick="clearCanvas()" class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg font-bold transition">
+                        X
                     </button>
                 </div>
+                <p id="status" class="text-sm mt-2 text-yellow-500">Cargando modelos...</p>
             </div>
 
-            <!-- Columna de Resultados (para ambos modelos) -->
-            <div class="w-full md:w-1/2 p-6 bg-gray-800 rounded-2xl shadow-xl border border-gray-700">
-                <h2 class="text-3xl font-bold text-center mb-6">Resultados de Predicción</h2>
+            <div class="flex-1 w-full space-y-6">
                 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                    <!-- Resultados Red B -->
-                    <div>
-                        <h3 class="text-xl font-semibold text-blue-400">Red B (Desde Cero)</h3>
-                        <p class="text-5xl font-black text-center my-4" id="pred-text-b">?</p>
-                        <div id="chart-container-b" class="space-y-2">
-                            <!-- El gráfico de barras se generará aquí -->
-                        </div>
+                <div class="bg-slate-800 p-5 rounded-xl border-l-4 border-blue-500 shadow-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xl font-bold text-blue-400">Red B (Desde Cero)</h3>
+                        <span id="pred-b-label" class="text-2xl font-black">?</span>
                     </div>
-
-                    <!-- Resultados Red A -->
-                    <div>
-                        <h3 class="text-xl font-semibold text-red-400">Red A (Transfer MNIST)</h3>
-                        <p class="text-5xl font-black text-center my-4" id="pred-text-a">?</p>
-                        <div id="chart-container-a" class="space-y-2">
-                            <!-- El gráfico de barras se generará aquí -->
-                        </div>
-                    </div>
-
+                    <div id="bars-b" class="space-y-1 text-xs"></div>
                 </div>
-            </div>
 
-        </div> <!-- Fin del contenedor principal -->
-    </div> <!-- Fin del max-w-6xl -->
+                <div class="bg-slate-800 p-5 rounded-xl border-l-4 border-red-500 shadow-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xl font-bold text-red-400">Red A (Transfer Learning)</h3>
+                        <span id="pred-a-label" class="text-2xl font-black">?</span>
+                    </div>
+                    <div id="bars-a" class="space-y-1 text-xs"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
 
     <script>
-        // --- 0. Configuración ---
-        // ¡IMPORTANTE! Estas clases deben estar en el orden correcto (0-7)
-        // Sacado de tus logs: ['circulo', 'cuadrado', 'equis', 'estrella', 'rectangulo', 'rombo', 'semicirculo', 'triangulo']
-        const CLASS_NAMES = [
-            'circulo', 'cuadrado', 'equis', 'estrella', 
-            'rectangulo', 'rombo', 'semicirculo', 'triangulo'
-        ];
-        
-        // --- 1. Variables Globales ---
+        // --- CONFIGURACIÓN ---
+        // TODO: COPIA AQUÍ TUS CLASES EXACTAMENTE COMO SALEN EN TU NOTEBOOK (orden alfabético usualmente)
+        const CLASES = ['circulo', 'cuadrado', 'equis', 'estrella', 'rectangulo', 'rombo', 'semicirculo', 'triangulo'];
+
+        let modelA, modelB;
         const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         let isDrawing = false;
-        let model_A, model_B; // Aquí guardaremos los modelos
 
-        const predictBtn = document.getElementById('predictBtn');
-        const clearBtn = document.getElementById('clearBtn');
-        const statusBar = document.getElementById('status');
-        
-        // --- 2. Lógica del Canvas ---
-        function initializeCanvas() {
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 20; // Pincel grueso, similar a MNIST
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
+        // Configurar Canvas (Negro con linea Blanca, igual a MNIST)
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, 280, 280);
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 18; // Grosor similar al dataset
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
 
-            // Eventos de Mouse
-            canvas.addEventListener('mousedown', startDrawing);
-            canvas.addEventListener('mouseup', stopDrawing);
-            canvas.addEventListener('mousemove', draw);
-            canvas.addEventListener('mouseout', stopDrawing);
-
-            // Eventos Táctiles
-            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e.touches[0]); });
-            canvas.addEventListener('touchend', (e) => { e.preventDefault(); stopDrawing(); });
-            canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); });
-        }
-
-        function getEventCoords(e) {
-            const rect = canvas.getBoundingClientRect();
-            return {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            };
-        }
-
-        function startDrawing(e) {
-            isDrawing = true;
-            const { x, y } = getEventCoords(e);
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-        }
-
-        function stopDrawing() {
-            isDrawing = false;
-            ctx.beginPath();
-        }
-
-        function draw(e) {
+        // Eventos de Dibujo
+        const start = (e) => { isDrawing = true; ctx.beginPath(); draw(e); };
+        const end = () => { isDrawing = false; ctx.beginPath(); };
+        const draw = (e) => {
             if (!isDrawing) return;
-            const { x, y } = getEventCoords(e);
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
             ctx.lineTo(x, y);
             ctx.stroke();
-        }
+        };
 
-        function clearCanvas() {
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Limpiar también las predicciones
-            updatePredictionUI('a', null);
-            updatePredictionUI('b', null);
-        }
-        clearBtn.addEventListener('click', clearCanvas);
-        predictBtn.addEventListener('click', predict);
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('mouseup', end);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('touchstart', start);
+        canvas.addEventListener('touchend', end);
+        canvas.addEventListener('touchmove', draw);
 
-        // --- 3. Lógica de TensorFlow.js ---
-
-        // Cargar ambos modelos en paralelo
+        // Cargar Modelos
         async function loadModels() {
             try {
-                // Rutas a las carpetas que exportaste
-                const model_b_path = 'model_b_desde_cero/model.json';
-                const model_a_path = 'model_a_transfer/model.json';
-
-                // Cargamos ambos al mismo tiempo
-                [model_B, model_A] = await Promise.all([
-                    tf.loadLayersModel(model_b_path),
-                    tf.loadLayersModel(model_a_path)
-                ]);
-
-                console.log("Modelo B (Desde Cero) cargado.", model_B);
-                console.log("Modelo A (Transfer MNIST) cargado.", model_A);
-                
-                statusBar.textContent = "¡Modelos cargados! Listo para predecir.";
-                statusBar.className = "mt-4 text-lg text-green-400";
-                predictBtn.disabled = false;
-
-            } catch (err) {
-                console.error("Error al cargar los modelos:", err);
-                statusBar.textContent = "Error: No se pudieron cargar los modelos.";
-                statusBar.className = "mt-4 text-lg text-red-500";
+                // Rutas relativas a las carpetas
+                modelB = await tf.loadLayersModel('./model_B_web/model.json');
+                modelA = await tf.loadLayersModel('./model_A_web/model.json');
+                document.getElementById('status').innerText = "Modelos listos ✅";
+                document.getElementById('status').className = "text-sm mt-2 text-green-400";
+            } catch (e) {
+                document.getElementById('status').innerText = "Error cargando modelos ❌";
+                console.error(e);
             }
         }
+        loadModels();
 
-        // Pre-procesar el canvas para que coincida con (1, 28, 28, 1)
-        function preprocessCanvas() {
-            // 1. Convertir a tensor (blanco y negro, 1 canal)
-            let tensor = tf.browser.fromPixels(canvas, 1);
-            
-            // 2. Redimensionar de 280x280 a 28x28
-            tensor = tf.image.resizeBilinear(tensor, [28, 28]);
-            
-            // 3. Normalizar (dividir por 255)
-            tensor = tensor.toFloat().div(tf.scalar(255.0));
-            
-            // 4. Añadir la dimensión del batch
-            tensor = tensor.expandDims(0); // Forma: [1, 28, 28, 1]
-            
-            return tensor;
+        function clearCanvas() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, 280, 280);
+            document.getElementById('pred-b-label').innerText = "?";
+            document.getElementById('pred-a-label').innerText = "?";
+            document.getElementById('bars-b').innerHTML = "";
+            document.getElementById('bars-a').innerHTML = "";
         }
 
-        // Realizar la predicción
         async function predict() {
-            if (!model_A || !model_B) {
-                console.log("Modelos no cargados.");
-                return;
-            }
+            if (!modelA || !modelB) return;
 
-            // 1. Obtener el tensor de la imagen
-            const tensor = preprocessCanvas();
+            // 1. Preprocesar imagen (280x280 -> 28x28 -> Normalizar)
+            const tensor = tf.tidy(() => {
+                let img = tf.browser.fromPixels(canvas, 1); // Leer en escala de grises
+                img = tf.image.resizeBilinear(img, [28, 28]); // Redimensionar
+                img = img.div(255.0); // Normalizar 0-1
+                return img.expandDims(0); // Batch size [1, 28, 28, 1]
+            });
 
-            // 2. Predecir con AMBOS modelos
-            // Usamos .data() para obtener los arrays de probabilidad
-            const output_B = await model_B.predict(tensor).data();
-            const output_A = await model_A.predict(tensor).data();
-            
-            // 3. Limpiar memoria del tensor
+            // 2. Predecir
+            const resB = await modelB.predict(tensor).data();
+            const resA = await modelA.predict(tensor).data();
             tensor.dispose();
 
-            // 4. Actualizar la UI
-            updatePredictionUI('b', output_B);
-            updatePredictionUI('a', output_A);
+            // 3. Mostrar Resultados
+            showResults(resB, 'pred-b-label', 'bars-b', 'bg-blue-500');
+            showResults(resA, 'pred-a-label', 'bars-a', 'bg-red-500');
         }
 
-        // --- 4. Lógica de UI (Gráficos) ---
-        function updatePredictionUI(modelId, probabilities) {
-            const textEl = document.getElementById(`pred-text-${modelId}`);
-            const chartEl = document.getElementById(`chart-container-${modelId}`);
+        function showResults(probs, labelId, containerId, colorClass) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = "";
             
-            // Colores para las barras
-            const colorClass = modelId === 'b' ? 'bg-blue-500' : 'bg-red-500';
+            // Encontrar la clase ganadora
+            let maxIdx = 0;
+            for(let i=1; i<probs.length; i++) if(probs[i] > probs[maxIdx]) maxIdx = i;
+            document.getElementById(labelId).innerText = CLASES[maxIdx];
 
-            // Limpiar estado
-            chartEl.innerHTML = '';
-            if (!probabilities) {
-                textEl.innerText = '?';
-                return;
-            }
-
-            // Encontrar la predicción más alta
-            let maxProb = -1;
-            let maxIndex = -1;
-            for (let i = 0; i < probabilities.length; i++) {
-                if (probabilities[i] > maxProb) {
-                    maxProb = probabilities[i];
-                    maxIndex = i;
-                }
-            }
-            
-            // Actualizar el texto del ganador
-            textEl.innerText = CLASS_NAMES[maxIndex];
-
-            // Generar el gráfico de barras
-            probabilities.forEach((prob, index) => {
-                const percent = (prob * 100).toFixed(1);
-                const className = CLASS_NAMES[index];
+            // Dibujar barras
+            for (let i = 0; i < CLASES.length; i++) {
+                const p = (probs[i] * 100).toFixed(1);
+                const width = Math.max(p, 1); // Mínimo 1% para que se vea algo
                 
-                const barHtml = `
-                    <div class="w-full">
-                        <div class="flex justify-between text-sm font-medium text-gray-300 mb-0.5">
-                            <span>${className}</span>
-                            <span>${percent}%</span>
+                // Resaltar la ganadora
+                const isWinner = i === maxIdx;
+                const opacity = isWinner ? 'opacity-100' : 'opacity-40';
+                const fontWeight = isWinner ? 'font-bold text-white' : 'text-slate-400';
+
+                const html = `
+                    <div class="flex items-center gap-2 ${opacity}">
+                        <span class="w-20 text-right ${fontWeight}">${CLASES[i]}</span>
+                        <div class="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div class="h-full ${colorClass}" style="width: ${width}%"></div>
                         </div>
-                        <div class="w-full bg-gray-700 rounded-full h-4">
-                            <div class="${colorClass} h-4 rounded-full" style="width: ${percent}%"></div>
-                        </div>
+                        <span class="w-10 text-xs">${p}%</span>
                     </div>
                 `;
-                chartEl.innerHTML += barHtml;
-            });
+                container.innerHTML += html;
+            }
         }
-        
-        // --- 5. Inicializar la App ---
-        document.addEventListener('DOMContentLoaded', () => {
-            initializeCanvas();
-            loadModels();
-            updatePredictionUI('a', null); // Limpiar gráficos al inicio
-            updatePredictionUI('b', null);
-        });
-
     </script>
 </body>
 </html>
