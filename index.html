@@ -117,28 +117,27 @@
         // Cargar Modelos
         async function loadModels() {
             try {
-                // --- ¡MODIFICACIÓN AQUÍ! ---
-                // Añadimos '?v=1.1' para forzar al navegador a descargar
-                // los archivos nuevos y no usar el caché.
-                const cacheBuster = `?v=${new Date().getTime()}`;
-                const modelB_path = `./model_B_web/model.json${cacheBuster}`;
-                const modelA_path = `./model_A_web/model.json${cacheBuster}`;
+                // --- TRUCO ANTI-CACHÉ ---
+                // Generamos un número único (la hora actual) para obligar
+                // al navegador a descargar los archivos frescos.
+                const timestamp = new Date().getTime();
+                
+                // Añadimos ?v=... al final de la ruta
+                const modelB_path = `./model_B_web/model.json?v=${timestamp}`;
+                const modelA_path = `./model_A_web/model.json?v=${timestamp}`;
 
-                console.log(`Cargando modelo desde: ${modelB_path}`);
-                console.log(`Cargando modelo desde: ${modelA_path}`);
-
+                console.log(`Intentando cargar: ${modelB_path}`);
+                
                 [modelB, modelA] = await Promise.all([
                     tf.loadLayersModel(modelB_path),
                     tf.loadLayersModel(modelA_path)
                 ]);
                 
-                statusEl.innerText = "Modelos listos ✅";
-                statusEl.className = "text-sm mt-2 text-green-400";
-                predictBtn.disabled = false;
+                document.getElementById('status').innerText = "Modelos listos ✅";
+                document.getElementById('status').className = "text-sm mt-2 text-green-400";
             } catch (e) {
-                statusEl.innerText = "Error cargando modelos ❌";
-                statusEl.className = "text-sm mt-2 text-red-500";
-                console.error(e); // El error que me mostraste saldrá aquí
+                document.getElementById('status').innerText = "Error cargando modelos ❌";
+                console.error("Detalle del error:", e);
             }
         }
         loadModels();
